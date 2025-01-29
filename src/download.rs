@@ -13,16 +13,18 @@ pub struct DefinedWord {
 const DEFS_PREFIX: &str = "./data/defs/";
 const WIKI_PREFIX: &str = "https://en.wiktionary.org/";
 
-pub async fn download_all(words: Vec<ParsedWord>) -> Result<Vec<DefinedWord>, String> {
-    let mut res = Vec::with_capacity(words.len());
+pub async fn download_all(words: Vec<ParsedWord>) -> Result<(), String> {
+    // let mut res = Vec::with_capacity(words.len());
     for word in words {
         if !word.link.contains("index.php") {
-            res.push(download_one(word).await?);
+            // res.push(
+            let _ = download_one(word).await?;
+            // );
         } else {
             println!("Ignoring word {}", &word.name);
         }
     }
-    Ok(res)
+    Ok(())
 }
 
 async fn download_one(word: ParsedWord) -> Result<DefinedWord, String> {
