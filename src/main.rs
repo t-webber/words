@@ -2,10 +2,12 @@
 #![feature(let_chains)]
 
 use crate::download::download_all;
+use crate::list::make_lists;
 use crate::parser::file_to_words;
 
 mod download;
 mod extract;
+mod list;
 mod parser;
 
 const SECTIONS: [&str; 16] = [
@@ -25,6 +27,8 @@ async fn main_wrapper() -> Result<(), String> {
     println!("Extracting words...");
     let parsed_words = file_to_words(&SECTIONS)?.to_vec();
     println!("Extracted {} words!", parsed_words.len());
+
+    make_lists(&parsed_words);
 
     println!("Fetching definitions...");
     let defined_words = download_all(parsed_words).await?;
