@@ -1,9 +1,11 @@
+#![allow(unused)]
 #![feature(let_chains)]
 
 use crate::download::download_all;
 use crate::parser::file_to_words;
 
 mod download;
+mod extract;
 mod parser;
 
 const SECTIONS: [&str; 10] = [
@@ -12,17 +14,22 @@ const SECTIONS: [&str; 10] = [
 
 #[tokio::main]
 async fn main() {
-    println!("Extracting words...");
-    let parsed_words = match file_to_words(&SECTIONS) {
-        Ok(parsed_words) => parsed_words,
-        Err(err) => panic!("Failed to parse html files.\n{err}"),
+    #[cfg(feature = "download")]
+    {
+        println!("Extracting words...");
+        let parsed_words = match file_to_words(&SECTIONS) {
+            Ok(parsed_words) => parsed_words,
+            Err(err) => panic!("Failed to parse html files.\n{err}"),
+        }
+        .to_vec();
+
+        println!("Found {} words!", parsed_words.len());
+
+        println!("Downloading definitions...");
+        let _ = download_all(parsed_words)
+            .await
+            .unwrap_or_else(|err| panic!("{err:?}"));
     }
-    .to_vec();
-
-    println!("Found {} words!", parsed_words.len());
-
-    println!("Downloading definitions...");
-    let _ = download_all(parsed_words)
-        .await
-        .unwrap_or_else(|err| panic!("{err:?}"));
+    #[cfg(not(feature = "download"))]
+    extract::extract_all();
 }

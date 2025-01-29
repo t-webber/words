@@ -12,3 +12,4 @@ tokio = { version = "1.43.0", features = ["full"] }
 
 [features]
 debug = []
+download = []

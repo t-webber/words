@@ -18,6 +18,8 @@ pub async fn download_all(words: Vec<ParsedWord>) -> Result<Vec<DefinedWord>, St
     for word in words {
         if !word.link.contains("index.php") {
             res.push(download_one(word).await?);
+        } else {
+            println!("Ignoring word {}", &word.name);
         }
     }
     Ok(res)
@@ -26,10 +28,7 @@ pub async fn download_all(words: Vec<ParsedWord>) -> Result<Vec<DefinedWord>, St
 async fn download_one(word: ParsedWord) -> Result<DefinedWord, String> {
     let path = format!("{DEFS_PREFIX}{}.html", word.name);
     let html = match fs::read_to_string(&path) {
-        Ok(html) => {
-            println!("Word {} already downloaded", &word.name);
-            html
-        }
+        Ok(html) => html,
         Err(_) => {
             let url = format!("{WIKI_PREFIX}{}", word.link);
             let html = fetch_bounce_back(&url, &word.name).await?;
