@@ -4,7 +4,7 @@ use markup5ever_rcdom::Node;
 use markup5ever_rcdom::NodeData;
 use std::fs;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParsedWord {
     pub name: String,
     pub link: String,
@@ -41,7 +41,7 @@ impl ParsedWord {
             .ok_or_else(|| make_error(tag, "Node doesn't contain any children"))?
             .data
         {
-            Ok(contents.take().to_ascii_lowercase())
+            Ok(contents.take().replace("/", "-slash-").to_string())
         } else {
             Err(make_error(tag, "Node first child isn't text"))
         }?;
