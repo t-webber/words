@@ -15,22 +15,22 @@ const SECTIONS: [&str; 16] = [
 
 #[tokio::main]
 async fn main() {
-    #[cfg(feature = "download")]
-    {
-        println!("Extracting words...");
-        let parsed_words = match file_to_words(&SECTIONS) {
-            Ok(parsed_words) => parsed_words,
-            Err(err) => panic!("Failed to parse html files.\n{err}"),
-        }
-        .to_vec();
-
-        println!("Found {} words!", parsed_words.len());
-
-        println!("Downloading definitions...");
-        let _ = download_all(parsed_words)
-            .await
-            .unwrap_or_else(|err| panic!("{err:?}"));
+    match main_wrapper().await {
+        Ok(()) => (),
+        Err(err) => panic!("An error occurred.\n\n{err:?}"),
     }
-    #[cfg(not(feature = "download"))]
-    extract::extract_all();
+}
+
+async fn main_wrapper() -> Result<(), String> {
+    println!("Extracting words...");
+    let parsed_words = file_to_words(&SECTIONS)?.to_vec();
+    println!("Extracted {} words!", parsed_words.len());
+
+    println!("Fetching definitions...");
+    let defined_words = download_all(parsed_words).await?;
+    println!("Fetched {} words!", defined_words.len());
+
+    println!("Extracting definitions...");
+    extract::extract_all(defined_words);
+    Ok(())
 }

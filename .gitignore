@@ -1,4 +1,5 @@
 target
-.*
+.*/
 *test*
-defs
+*.html
+!data/lists/

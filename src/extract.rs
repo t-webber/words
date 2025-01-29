@@ -1,14 +1,72 @@
-use std::{fs, rc};
+use std::{
+    fs,
+    rc::{self, Rc},
+};
 
-use html5ever::tendril::TendrilSink as _;
-use markup5ever_rcdom::{Node, NodeData};
+use html5ever::{QualName, serialize::SerializeOpts, tendril::TendrilSink as _};
+use markup5ever_rcdom::{Node, NodeData, RcDom, SerializableHandle};
 
-pub fn extract_all() {
-    let html = fs::read_to_string("test.html").unwrap();
-    extract_one(&html, "out.html").unwrap();
+use crate::{download::DefinedWord, parser::ParsedWord};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn remove_heading(tree: &RcDom) -> Vec<Rc<Node>> {
+    let document = tree.document.as_ref().children.take();
+    let html = {
+        let first = document.first().unwrap().as_ref().children.take();
+        if first.is_empty() {
+            document.get(1).unwrap().as_ref().children.take()
+        } else {
+            first
+        }
+    };
+    let mut html_iter = html.into_iter().skip(1);
+    let mut next = html_iter.next().unwrap();
+    while let NodeData::Text { contents } = &next.data
+        && contents
+            .borrow()
+            .to_string()
+            .chars()
+            .all(char::is_whitespace)
+    {
+        next = html_iter.next().unwrap();
+    }
+    next.as_ref().children.take()
 }
 
-fn extract_one(html: &str, outfilename: &str) -> Result<String, String> {
+fn print_node(node: &Rc<Node>) -> String {
+    let mut output = Vec::new();
+    let handle = SerializableHandle::from(node.clone());
+    html5ever::serialize(&mut output, &handle, SerializeOpts::default());
+    String::from_utf8(output).unwrap()
+}
+
+fn print_nodes(nodes: &[Rc<Node>]) -> String {
+    let mut output = String::new();
+    for node in nodes {
+        output.push_str(&print_node(node));
+    }
+    output
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const DEFINITIONS_PREFIX: &str = "data/extracted/";
+
+pub fn extract_all(words: Vec<DefinedWord>) -> Result<(), String> {
+    for word in words {
+        let output = format!("{DEFINITIONS_PREFIX}{}.html", word.name);
+        if fs::read_to_string(&output).is_err() {
+            let html = fs::read_to_string(&word.path).unwrap();
+            let extracted = extract_one(&html)?;
+            fs::write(output, extracted)
+                .map_err(|err| format!("Failed to write to file.\n{err}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn extract_one(html: &str) -> Result<String, String> {
     let tree = html5ever::parse_document(
         markup5ever_rcdom::RcDom::default(),
         html5ever::ParseOpts::default(),
@@ -17,46 +75,54 @@ fn extract_one(html: &str, outfilename: &str) -> Result<String, String> {
     .read_from(&mut html.as_bytes())
     .map_err(|err| format!("Invalid HTML string: {err}"))?;
 
-    let definitions = get_definitions(tree.document);
-    for node in definitions {
-        println!(
-            "================================================\n{node:#?}\n================================================"
-        );
-    }
+    let body = remove_heading(&tree);
 
-    Ok(String::new())
+    // panic!("raw:\n{}", print_nodes(&body));
+
+    let definitions = get_definitions(body, "English");
+
+    Ok(print_nodes(&definitions))
 }
 
-fn get_definitions(node: rc::Rc<Node>) -> Vec<rc::Rc<Node>> {
-    if search_title_with_depth(2, &node) {
-        vec![node]
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn get_definitions(nodes: Vec<rc::Rc<Node>>, section: &str) -> Vec<rc::Rc<Node>> {
+    if search_title_with_depth(2, &nodes, section) {
+        nodes
     } else {
-        node.children
-            .take()
+        nodes
             .into_iter()
-            .flat_map(get_definitions)
+            .flat_map(|child| get_definitions(child.children.take(), section))
             .collect()
     }
 }
 
-fn search_title_with_depth(depth: usize, node: &rc::Rc<Node>) -> bool {
-    println!("{}[{depth}]\t{node:#?}", "-".repeat(depth * 4));
+fn is_section(node: &Node, section: &str) -> bool {
     if let NodeData::Element { name, attrs, .. } = &node.data
         && name.local.to_string() == "h2"
         && attrs
             .borrow()
             .iter()
-            .any(|x| x.name.local.to_string() == "id" && x.value.to_string() == "English")
+            .any(|x| x.name.local.to_string() == "id" && x.value.to_string() == section)
     {
-        // println!("true");
-        // true
-        panic!();
+        true
+    } else {
+        false
+    }
+}
+
+fn search_title_with_depth(depth: usize, nodes: &[rc::Rc<Node>], section: &str) -> bool {
+    if depth == 0 && nodes.iter().any(|node| is_section(node, section)) {
+        true
     } else if depth == 0 {
         false
     } else {
-        node.children
-            .borrow()
-            .iter()
-            .any(|child| search_title_with_depth(depth - 1, node))
+        for node in nodes {
+            if search_title_with_depth(depth - 1, &node.children.borrow(), section) {
+                // println!("{} [{depth}]\n{node:#?}", ">".repeat(depth * 4));
+                return true;
+            }
+        }
+        false
     }
 }
