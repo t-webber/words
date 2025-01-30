@@ -1,25 +1,25 @@
 use std::fs;
 
-use crate::parser::ParsedWord;
+use crate::{parser::ParsedWord, valid_link};
 
 pub fn make_lists(words: &[ParsedWord]) {
-    make_list(&words, "all", |_| true).unwrap();
-    make_list(&words, "all_valid", |word| !word.link.contains("index.php")).unwrap();
-    make_list(&words, "alpha_lower", |word| {
+    make_list(words, "all", |_| true).unwrap();
+    make_list(words, "all_valid", |word| valid_link(&word.link)).unwrap();
+    make_list(words, "alpha_lower", |word| {
         word.name.chars().all(|ch| ch.is_ascii_lowercase())
     })
     .unwrap();
-    make_list(&words, "alpha_lower_valid", |word| {
-        !word.link.contains("index.php") && word.name.chars().all(|ch| ch.is_ascii_lowercase())
+    make_list(words, "alpha_lower_valid", |word| {
+        valid_link(&word.link) && word.name.chars().all(|ch| ch.is_ascii_lowercase())
     })
     .unwrap();
-    make_list(&words, "min_3_alpha_lower", |word| {
+    make_list(words, "min_3_alpha_lower", |word| {
         word.name.len() >= 3 && word.name.chars().all(|ch| ch.is_ascii_lowercase())
     })
     .unwrap();
-    make_list(&words, "min_3_alpha_lower_valid", |word| {
+    make_list(words, "min_3_alpha_lower_valid", |word| {
         word.name.len() >= 3
-            && !word.link.contains("index.php")
+            && valid_link(&word.link)
             && word.name.chars().all(|ch| ch.is_ascii_lowercase())
     })
     .unwrap();

@@ -1,4 +1,5 @@
 use std::{
+    cell::{Cell, RefCell},
     fs,
     rc::{self, Rc},
 };
@@ -56,13 +57,20 @@ const DEFINITIONS_PREFIX: &str = "data/extracted/";
 pub fn extract_all(words: Vec<DefinedWord>) -> Result<(), String> {
     for word in words {
         let output = format!("{DEFINITIONS_PREFIX}{}.html", word.name);
-        if fs::read_to_string(&output).is_err() {
-            let html = fs::read_to_string(&word.path).unwrap();
-            let extracted = extract_one(&html)?;
-            fs::write(output, extracted)
-                .map_err(|err| format!("Failed to write to file.\n{err}"))?;
-        }
+        extract_word(&word.path, &output)?;
+        println!("Extracted {} successfully", word.name);
     }
+    Ok(())
+
+    // extract_word("test.html", "out.html")
+}
+
+fn extract_word(input: &str, output: &str) -> Result<(), String> {
+    // if fs::read_to_string(&output).is_err() {
+    let html = fs::read_to_string(input).unwrap();
+    let extracted = extract_one(&html)?;
+    fs::write(output, extracted).map_err(|err| format!("Failed to write to file.\n{err}"))?;
+    // }
     Ok(())
 }
 
@@ -77,23 +85,31 @@ fn extract_one(html: &str) -> Result<String, String> {
 
     let body = remove_heading(&tree);
 
-    // panic!("raw:\n{}", print_nodes(&body));
-
     let definitions = get_definitions(body, "English");
 
-    Ok(print_nodes(&definitions))
+    if definitions.is_empty() {
+        return Err("Failed to find English section".to_string());
+    }
+
+    Ok(print_nodes(&(definitions)))
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn get_definitions(nodes: Vec<rc::Rc<Node>>, section: &str) -> Vec<rc::Rc<Node>> {
-    if search_title_with_depth(2, &nodes, section) {
-        nodes
-    } else {
-        nodes
-            .into_iter()
-            .flat_map(|child| get_definitions(child.children.take(), section))
-            .collect()
+fn get_definitions(nodes: Vec<Rc<Node>>, section: &str) -> Vec<Rc<Node>> {
+    let search = search_title_with_depth(2, &nodes, section);
+    match search {
+        SearchStatus::Node(selected_nodes) => selected_nodes,
+        SearchStatus::None => {
+            for node in nodes {
+                let rec = get_definitions(node.children.take(), section);
+                if !rec.is_empty() {
+                    return rec;
+                }
+            }
+            vec![]
+        }
+        _ => panic!("invalid depths"),
     }
 }
 
@@ -111,18 +127,83 @@ fn is_section(node: &Node, section: &str) -> bool {
     }
 }
 
-fn search_title_with_depth(depth: usize, nodes: &[rc::Rc<Node>], section: &str) -> bool {
-    if depth == 0 && nodes.iter().any(|node| is_section(node, section)) {
-        true
-    } else if depth == 0 {
-        false
-    } else {
-        for node in nodes {
-            if search_title_with_depth(depth - 1, &node.children.borrow(), section) {
-                // println!("{} [{depth}]\n{node:#?}", ">".repeat(depth * 4));
-                return true;
+enum SearchStatus {
+    None,
+    FoundTitle,
+    FirstDepth(Vec<Rc<Node>>),
+    Node(Vec<Rc<Node>>),
+}
+
+// const SEP: &str =
+//     "-------------------------------------------------------------------------------------";
+
+fn search_title_with_depth(depth: usize, nodes: &[Rc<Node>], section: &str) -> SearchStatus {
+    if depth == 0 {
+        for node in nodes.iter() {
+            if is_section(node, section) {
+                return SearchStatus::FoundTitle;
             }
         }
-        false
+        SearchStatus::None
+    } else {
+        let mut iter = nodes.iter().enumerate();
+        while let Some((idx, node)) = iter.next() {
+            // println!(
+            //     "{SEP}\n[{depth}]\t{:?}\n{SEP}",
+            //     if let NodeData::Element { name, .. } = &node.data {
+            //         format!("{}", name.local)
+            //     } else {
+            //         format!("{:?}", node.data)
+            //     }
+            // );
+            let search =
+                search_title_with_depth(depth - 1, node.children.borrow().as_ref(), section);
+            return match search {
+                SearchStatus::None => {
+                    // println!("continue");
+                    continue;
+                }
+                SearchStatus::FoundTitle => {
+                    let mut title_and_next = Vec::with_capacity(1 + iter.len());
+
+                    title_and_next.push(node.to_owned());
+                    title_and_next.extend(
+                        iter.map(|(_, next)| next.to_owned())
+                            .collect::<Vec<Rc<Node>>>(),
+                    );
+
+                    // println!("found title, saving node\n{title_and_next:#?}");
+                    SearchStatus::FirstDepth(title_and_next)
+                }
+                SearchStatus::FirstDepth(selected) => {
+                    // println!("child is title, returning value\n{selected:#?}");
+
+                    // let mut selected_and_next = Vec::with_capacity(1 + iter.len());
+
+                    // selected_and_next.push(selected);
+
+                    // // dbg!(&iter);
+
+                    // selected_and_next.extend(
+                    //     iter.map(|(_, next)| next.to_owned())
+                    //         .collect::<Vec<Rc<Node>>>(),
+                    // );
+
+                    // println!(
+                    //     ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> {} at index {idx}",
+                    //     selected_and_next.len()
+                    // );
+
+                    // println!(
+                    //     "{SEP}\nDepth 2 found title:\nNode:\n{:?}\n{SEP}\nChildren:\n{:#?}\n{SEP}",
+                    //     node.data, selected_and_next
+                    // );
+
+                    SearchStatus::Node(selected)
+                }
+                SearchStatus::Node(_) => panic!("Too deep"),
+            };
+        }
+        SearchStatus::None
     }
 }

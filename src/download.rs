@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::parser::ParsedWord;
+use crate::{parser::ParsedWord, valid_link};
 
 #[derive(Debug)]
 pub struct DefinedWord {
@@ -21,12 +21,9 @@ const WIKI_PREFIX: &str = "https://en.wiktionary.org/";
 pub async fn download_all(words: Vec<ParsedWord>) -> Result<Vec<DefinedWord>, String> {
     #[cfg(feature = "download")]
     {
-        // let mut res = Vec::with_capacity(words.len());
         for word in words {
-            if !word.link.contains("index.php") {
-                // res.push(
+            if valid_link(&word.link) {
                 let _ = download_one(word).await?;
-                // );
             } else {
                 println!("Ignoring word {}", &word.name);
             }
@@ -55,7 +52,9 @@ async fn download_one(word: ParsedWord) -> Result<(), String> {
         Ok(html) => Ok(()),
         Err(_) => {
             let url = word_to_url(&word);
-            let html = fetch_bounce_back(&url, &word.name).await?;
+            let html = fetch_bounce_back(&url, &word.name)
+                .await
+                .map_err(|err| format!("Failed to download definition of {word:?}.\n{err}"))?;
             println!("Downloaded word {} ({url} => {path})", &word.name);
             fs::write(path, html).map_err(|err| {
                 format!(

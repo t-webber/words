@@ -19,8 +19,12 @@ const SECTIONS: [&str; 16] = [
 async fn main() {
     match main_wrapper().await {
         Ok(()) => (),
-        Err(err) => panic!("An error occurred.\n\n{err:?}"),
+        Err(err) => panic!("An error occurred.\n\n{err}"),
     }
+}
+
+fn valid_link(link: &str) -> bool {
+    link.starts_with("/wiki/") && !link.contains("index.php")
 }
 
 async fn main_wrapper() -> Result<(), String> {
