@@ -55,22 +55,36 @@ fn print_nodes(nodes: &[Rc<Node>]) -> String {
 const DEFINITIONS_PREFIX: &str = "data/extracted/";
 
 pub fn extract_all(words: Vec<DefinedWord>) -> Result<(), String> {
-    for word in words {
+    let len = words.len();
+
+    let mut err = vec![];
+    for (i, word) in words.into_iter().enumerate() {
         let output = format!("{DEFINITIONS_PREFIX}{}.html", word.name);
-        extract_word(&word.path, &output)?;
-        println!("Extracted {} successfully", word.name);
+        if extract_word(&word.path, &output).is_err() {
+            println!("[{i}]\t {}\tfailed", word.name);
+            err.push(word);
+        }
     }
+    panic!(
+        "Errors = {}\n\nNumber of errors: {}/{}",
+        err.iter()
+            .map(|word| word.name.to_owned())
+            .collect::<Vec<String>>()
+            .join(" "),
+        err.len(),
+        len
+    );
     Ok(())
 
     // extract_word("test.html", "out.html")
 }
 
 fn extract_word(input: &str, output: &str) -> Result<(), String> {
-    // if fs::read_to_string(&output).is_err() {
-    let html = fs::read_to_string(input).unwrap();
-    let extracted = extract_one(&html)?;
-    fs::write(output, extracted).map_err(|err| format!("Failed to write to file.\n{err}"))?;
-    // }
+    if fs::read_to_string(output).is_err() {
+        let html = fs::read_to_string(input).unwrap();
+        let extracted = extract_one(&html)?;
+        fs::write(output, extracted).map_err(|err| format!("Failed to write to file.\n{err}"))?;
+    }
     Ok(())
 }
 
@@ -85,10 +99,19 @@ fn extract_one(html: &str) -> Result<String, String> {
 
     let body = remove_heading(&tree);
 
-    let definitions = get_definitions(body, "English");
+    let definitions = {
+        let en = get_definitions(&body, "English");
+        if !en.is_empty() {
+            en
+        } else {
+            dbg!(&body);
+            /// TODO: data taken even with clone so this doesn't work
+            get_definitions(&body, "Translingual")
+        }
+    };
 
     if definitions.is_empty() {
-        return Err("Failed to find English section".to_string());
+        return Err("Failed to find English or Translingual section".to_string());
     }
 
     Ok(print_nodes(&(definitions)))
@@ -96,13 +119,13 @@ fn extract_one(html: &str) -> Result<String, String> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn get_definitions(nodes: Vec<Rc<Node>>, section: &str) -> Vec<Rc<Node>> {
-    let search = search_title_with_depth(2, &nodes, section);
+fn get_definitions(nodes: &Vec<Rc<Node>>, section: &str) -> Vec<Rc<Node>> {
+    let search = search_title_with_depth(2, nodes, section);
     match search {
         SearchStatus::Node(selected_nodes) => selected_nodes,
         SearchStatus::None => {
             for node in nodes {
-                let rec = get_definitions(node.children.take(), section);
+                let rec = get_definitions(&node.to_owned().children.take(), section);
                 if !rec.is_empty() {
                     return rec;
                 }

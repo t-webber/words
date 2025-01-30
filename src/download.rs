@@ -21,11 +21,11 @@ const WIKI_PREFIX: &str = "https://en.wiktionary.org/";
 pub async fn download_all(words: Vec<ParsedWord>) -> Result<Vec<DefinedWord>, String> {
     #[cfg(feature = "download")]
     {
-        for word in words {
+        for (i, word) in words.into_iter().enumerate() {
             if valid_link(&word.link) {
                 let _ = download_one(word).await?;
             } else {
-                println!("Ignoring word {}", &word.name);
+                println!("[{i}] Ignoring word {}", &word.name);
             }
         }
         Err("Download finished successfully".to_string())
@@ -55,7 +55,6 @@ async fn download_one(word: ParsedWord) -> Result<(), String> {
             let html = fetch_bounce_back(&url, &word.name)
                 .await
                 .map_err(|err| format!("Failed to download definition of {word:?}.\n{err}"))?;
-            println!("Downloaded word {} ({url} => {path})", &word.name);
             fs::write(path, html).map_err(|err| {
                 format!(
                     "Error on word {}: failed to write response to fs.\n{err}",
