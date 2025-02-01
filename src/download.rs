@@ -21,18 +21,29 @@ const WIKI_PREFIX: &str = "https://en.wiktionary.org/";
 pub async fn download_all(words: Vec<ParsedWord>) -> Result<Vec<DefinedWord>, String> {
     #[cfg(feature = "download")]
     {
+        let mut ignored = 0;
         for (i, word) in words.into_iter().enumerate() {
+            if i != 1 && i % 10000 == 1 {
+                println!(
+                    "[{:6}-{:6}] {:.0}%",
+                    i - 10000 - 1,
+                    i,
+                    (ignored as f64) / (10000 as f64) * (100 as f64)
+                );
+                ignored = 0;
+            }
+            print!("\r{:98}\r", &word.name);
             if valid_link(&word.link) {
                 let _ = download_one(word).await?;
             } else {
-                println!("[{i}] Ignoring word {}", &word.name);
+                ignored += 1;
             }
         }
         Err("Download finished successfully".to_string())
     }
     #[cfg(not(feature = "download"))]
     {
-        let mut res = Vec::with_capacity(words.len());
+        let mut res = Vec::with_capacity(words.len() / 2);
         for word in words {
             let path = word_to_path(&word);
             if fs::read_to_string(&path).is_ok() {
